@@ -22,26 +22,28 @@ fn main() {
         .arg(&test)
         .arg(&dst)
         .status()
-        .expect("failed to run: adb pushr");
+        .expect("failed to run: adb push");
     assert!(status.success());
 
     let output = Command::new("adb")
         .arg("shell")
+        .arg("RUST_BACKTRACE=1")
         .arg(&dst)
         .output()
         .expect("failed to run: adb shell");
     assert!(status.success());
 
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
     println!("status: {}\nstdout ---\n{}\nstderr ---\n{}",
              output.status,
-             String::from_utf8_lossy(&output.stdout),
-             String::from_utf8_lossy(&output.stderr));
+             stdout,
+             stderr);
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.lines().find(|l|
-        (l.starts_with("PASSED ") && l.contains(" tests")) ||
-        l.starts_with("test result: ok")
-    ).unwrap_or_else(|| {
+    if !stderr.lines().any(|l| (l.starts_with("PASSED ") && l.contains(" tests")) || l.starts_with("test result: ok"))
+        && !stdout.lines().any(|l| (l.starts_with("PASSED ") && l.contains(" tests")) || l.starts_with("test result: ok"))
+    {
         panic!("failed to find successful test run");
-    });
+    };
 }

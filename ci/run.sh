@@ -37,7 +37,7 @@ if [ "$QEMU" != "" ]; then
     # plain qcow2 image: just download it
     qemufile="$(echo "${QEMU}" | sed 's/\//__/g')"
     if [ ! -f "${tmpdir}/${qemufile}" ]; then
-      curl --retry 5 "${MIRRORS_URL}/${QEMU}" | \
+      curl --retry 5 "${MIRRORS_URL}/${QEMU}" \
         > "${tmpdir}/${qemufile}"
     fi
   fi
@@ -53,7 +53,7 @@ if [ "$QEMU" != "" ]; then
   cargo build \
     --manifest-path libc-test/Cargo.toml \
     --target "${TARGET}" \
-    --test main
+    --test main ${LIBC_CI_ZBUILD_STD+"-Zbuild-std"}
   rm "${CARGO_TARGET_DIR}/${TARGET}"/debug/main-*.d
   cp "${CARGO_TARGET_DIR}/${TARGET}"/debug/main-* "${tmpdir}"/mount/libc-test
   # shellcheck disable=SC2016
@@ -79,20 +79,41 @@ if [ "$QEMU" != "" ]; then
     -net user \
     -nographic \
     -vga none 2>&1 | tee "${CARGO_TARGET_DIR}/out.log"
-  exec egrep "^(PASSED)|(test result: ok)" "${CARGO_TARGET_DIR}/out.log"
+  exec grep -E "^(PASSED)|(test result: ok)" "${CARGO_TARGET_DIR}/out.log"
 fi
 
-# FIXME: x86_64-unknown-linux-gnux32 fail to compile without --release
-# See https://github.com/rust-lang/rust/issues/45417
-opt=
-if [ "$TARGET" = "x86_64-unknown-linux-gnux32" ]; then
-  opt="--release"
+if [ "$TARGET" = "s390x-unknown-linux-gnu" ]; then
+  # FIXME: s390x-unknown-linux-gnu often fails to test due to timeout,
+  # so we retry this N times.
+  N=5
+  n=0
+  passed=0
+  until [ $n -ge $N ]
+  do
+    if [ "$passed" = "0" ]; then
+      if cargo test --no-default-features --manifest-path libc-test/Cargo.toml --target "${TARGET}" ${LIBC_CI_ZBUILD_STD+"-Zbuild-std"} ; then
+        passed=$((passed+1))
+        continue
+      fi
+    elif [ "$passed" = "1" ]; then
+      if cargo test --manifest-path libc-test/Cargo.toml --target "${TARGET}" ${LIBC_CI_ZBUILD_STD+"-Zbuild-std"} ; then
+        passed=$((passed+1))
+        continue
+      fi
+    elif [ "$passed" = "2" ]; then
+      if cargo test --features extra_traits --manifest-path libc-test/Cargo.toml --target "${TARGET}" ${LIBC_CI_ZBUILD_STD+"-Zbuild-std"}; then
+        break
+      fi
+    fi
+    n=$((n+1))
+    sleep 1
+  done
+else
+  cargo test --no-default-features --manifest-path libc-test/Cargo.toml \
+    --target "${TARGET}" ${LIBC_CI_ZBUILD_STD+"-Zbuild-std"}
+
+  cargo test --manifest-path libc-test/Cargo.toml --target "${TARGET}" ${LIBC_CI_ZBUILD_STD+"-Zbuild-std"}
+
+  RUST_BACKTRACE=1 cargo test --features extra_traits --manifest-path libc-test/Cargo.toml \
+    --target "${TARGET}" ${LIBC_CI_ZBUILD_STD+"-Zbuild-std"}
 fi
-
-cargo test -vv $opt --no-default-features --manifest-path libc-test/Cargo.toml \
-      --target "${TARGET}"
-
-cargo test -vv $opt --manifest-path libc-test/Cargo.toml --target "${TARGET}"
-
-cargo test -vv $opt --features extra_traits --manifest-path libc-test/Cargo.toml \
-      --target "${TARGET}"

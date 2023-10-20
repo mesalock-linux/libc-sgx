@@ -60,6 +60,13 @@ case ${1} in
           ./configure --prefix="/musl-${musl_arch}" --enable-wrapper=yes
         make install -j4
         ;;
+    s390x)
+        musl_arch=s390x
+        kernel_arch=s390
+        CC=s390x-linux-gnu-gcc \
+          ./configure --prefix="/musl-${musl_arch}" --enable-wrapper=yes
+        make install -j4
+        ;;
     *)
         echo "Unknown target arch: \"${1}\""
         exit 1
@@ -72,7 +79,7 @@ cd ..
 rm -rf $MUSL
 
 # Download, configure, build, and install musl-sanitized kernel headers:
-KERNEL_HEADER_VER="4.4.2-2"
+KERNEL_HEADER_VER="4.19.88"
 curl --retry 5 -L \
      "https://github.com/sabotage-linux/kernel-headers/archive/v${KERNEL_HEADER_VER}.tar.gz" | \
     tar xzf -
